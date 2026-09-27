@@ -2,7 +2,7 @@
   "name": "vscode-remote-tensorlake",
   "displayName": "Remote Tensorlake",
   "description": "Manage Tensorlake sandboxes and open lightweight remote workspaces without VS Code Server.",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "repository": {
     "type": "git",
     "url": "https://github.com/starfall-org/remote-sandbox-vscode.git"
@@ -18,7 +18,8 @@
   "activationEvents": [
     "onFileSystem:tensorlake",
     "onView:remote-tensorlake-sandboxes-sidebar",
-    "onTerminalProfile:remote-tensorlake.terminal"
+    "onTerminalProfile:remote-tensorlake.terminal",
+    "onStartupFinished"
   ],
   "extensionKind": [
     "ui"

@@ -42,6 +42,16 @@ interface SandboxTarget {
   workingDir: string;
 }
 
+interface PendingLocalTensorlakeConnect {
+  sandboxId: string;
+  sandboxName?: string | null;
+  remotePath: string;
+  createdAt: number;
+}
+
+const PENDING_LOCAL_CONNECT_KEY = "tensorlake.pendingLocalConnect";
+const PENDING_LOCAL_CONNECT_MAX_AGE_MS = 30_000;
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const outputChannel = vscode.window.createOutputChannel("Remote Tensorlake", { log: true });
   outputChannel.info("Extension activated");
@@ -633,6 +643,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
   );
 
+  async function openTensorlakeTarget(
+    sandboxId: string,
+    sandboxName: string | null | undefined,
+    remotePath: string,
+    newWindow: boolean,
+  ): Promise<void> {
+    if (newWindow && vscode.env.remoteName) {
+      const pending: PendingLocalTensorlakeConnect = {
+        sandboxId,
+        sandboxName,
+        remotePath,
+        createdAt: Date.now(),
+      };
+
+      outputChannel.info(
+        "Connect in New Window requested from remote host " +
+          vscode.env.remoteName +
+          "; opening a local VS Code window first.",
+      );
+      await context.globalState.update(PENDING_LOCAL_CONNECT_KEY, pending);
+
+      try {
+        await vscode.commands.executeCommand("workbench.action.newWindow");
+      } catch (error) {
+        await context.globalState.update(PENDING_LOCAL_CONNECT_KEY, undefined);
+        throw error;
+      }
+      return;
+    }
+
+    await openTensorlakeWorkspace(
+      sandboxId,
+      newWindow,
+      remotePath,
+      sandboxName,
+    );
+  }
+
   async function connectRecentFolder(
     item: TensorlakeRecentFolderItem | undefined,
     newWindow: boolean,
@@ -652,11 +700,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         recent.sandboxName,
         recent.remotePath,
       );
-      await openTensorlakeWorkspace(
+      await openTensorlakeTarget(
         recent.sandboxId,
-        newWindow,
-        recent.remotePath,
         recent.sandboxName,
+        recent.remotePath,
+        newWindow,
       );
     } catch (error) {
       showConnectionError(error, outputChannel);
@@ -701,16 +749,55 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             sandbox.name,
             TENSORLAKE_HOME,
           );
-          await openTensorlakeWorkspace(
+          await openTensorlakeTarget(
             sandbox.sandbox_id,
-            newWindow,
-            TENSORLAKE_HOME,
             sandbox.name,
+            TENSORLAKE_HOME,
+            newWindow,
           );
         },
       );
     } catch (error) {
       showConnectionError(error, outputChannel);
+    }
+  }
+
+  if (!vscode.env.remoteName) {
+    const pending = context.globalState.get<PendingLocalTensorlakeConnect>(
+      PENDING_LOCAL_CONNECT_KEY,
+    );
+    if (pending) {
+      const age = Date.now() - pending.createdAt;
+      await context.globalState.update(PENDING_LOCAL_CONNECT_KEY, undefined);
+
+      if (
+        age >= 0 &&
+        age <= PENDING_LOCAL_CONNECT_MAX_AGE_MS &&
+        pending.sandboxId &&
+        pending.remotePath
+      ) {
+        outputChannel.info(
+          "Consuming pending local Tensorlake connect: sandbox=" +
+            pending.sandboxId +
+            " path=" +
+            pending.remotePath,
+        );
+        try {
+          await sessionManager.ensureRunning(pending.sandboxId, true);
+          await openTensorlakeWorkspace(
+            pending.sandboxId,
+            false,
+            pending.remotePath,
+            pending.sandboxName,
+          );
+        } catch (error) {
+          showConnectionError(error, outputChannel);
+        }
+      } else {
+        outputChannel.warn(
+          "Discarded stale pending local Tensorlake connect: ageMs=" + age,
+        );
+      }
     }
   }
 

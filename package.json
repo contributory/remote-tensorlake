@@ -1,7 +1,7 @@
 {
-  "name": "remote-sandbox",
-  "displayName": "Remote Sandbox",
-  "description": "Manage Tensorlake, E2B and Freestyle sandboxes and connect to them over SSH from VS Code.",
+  "name": "vscode-remote-tensorlake",
+  "displayName": "Remote Tensorlake",
+  "description": "Manage Tensorlake sandboxes and connect to them over SSH from VS Code.",
   "version": "2.4.2",
   "repository": {
     "type": "git",
@@ -24,16 +24,16 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "remote-sandbox",
-          "title": "Remote Sandbox",
+          "id": "remote-tensorlake",
+          "title": "Remote Tensorlake",
           "icon": "$(cloud)"
         }
       ]
     },
     "views": {
-      "remote-sandbox": [
+      "remote-tensorlake": [
         {
-          "id": "remote-sandbox-sandboxes-sidebar",
+          "id": "remote-tensorlake-sandboxes-sidebar",
           "name": "Sandboxes",
           "type": "tree",
           "when": "true",
@@ -43,106 +43,45 @@
     },
     "commands": [
       {
-        "command": "remote-sandbox.refreshSandboxes",
+        "command": "remote-tensorlake.refreshSandboxes",
         "title": "Refresh Sandboxes",
         "icon": "$(refresh)"
       },
       {
-        "command": "remote-sandbox.tensorlakeSetApiKey",
+        "command": "remote-tensorlake.tensorlakeSetApiKey",
         "title": "Tensorlake: Set API Key"
       },
       {
-        "command": "remote-sandbox.tensorlakeCreateSandbox",
+        "command": "remote-tensorlake.tensorlakeCreateSandbox",
         "title": "Tensorlake: Create Sandbox",
         "icon": "$(add)"
       },
       {
-        "command": "remote-sandbox.tensorlakeSuspendSandbox",
+        "command": "remote-tensorlake.tensorlakeSuspendSandbox",
         "title": "Tensorlake: Suspend Sandbox",
         "icon": "$(debug-pause)"
       },
       {
-        "command": "remote-sandbox.tensorlakeResumeSandbox",
+        "command": "remote-tensorlake.tensorlakeResumeSandbox",
         "title": "Tensorlake: Resume Sandbox",
         "icon": "$(debug-start)"
       },
       {
-        "command": "remote-sandbox.tensorlakeDeleteSandbox",
+        "command": "remote-tensorlake.tensorlakeDeleteSandbox",
         "title": "Tensorlake: Terminate Sandbox",
         "icon": "$(trash)"
       },
       {
-        "command": "remote-sandbox.tensorlakeListSandboxes",
+        "command": "remote-tensorlake.tensorlakeListSandboxes",
         "title": "Tensorlake: List Sandboxes"
       },
       {
-        "command": "remote-sandbox.e2bPauseSandbox",
-        "title": "E2B: Pause Sandbox",
-        "icon": "$(debug-pause)"
-      },
-      {
-        "command": "remote-sandbox.e2bResumeSandbox",
-        "title": "E2B: Resume Sandbox",
-        "icon": "$(debug-start)"
-      },
-      {
-        "command": "remote-sandbox.e2bListSandboxes",
-        "title": "E2B: List Sandboxes"
-      },
-      {
-        "command": "remote-sandbox.e2bSetApiKey",
-        "title": "E2B: Set API Key"
-      },
-      {
-        "command": "remote-sandbox.e2bCreateSandbox",
-        "title": "E2B: Create Sandbox",
-        "icon": "$(add)"
-      },
-      {
-        "command": "remote-sandbox.e2bDeleteSandbox",
-        "title": "E2B: Delete Sandbox",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "remote-sandbox.freestyleSetApiKey",
-        "title": "Freestyle: Set API Key"
-      },
-      {
-        "command": "remote-sandbox.freestyleCreateVm",
-        "title": "Freestyle: Create VM",
-        "icon": "$(add)"
-      },
-      {
-        "command": "remote-sandbox.freestyleSuspendVm",
-        "title": "Freestyle: Suspend VM",
-        "icon": "$(debug-pause)"
-      },
-      {
-        "command": "remote-sandbox.freestyleStartVm",
-        "title": "Freestyle: Start VM",
-        "icon": "$(debug-start)"
-      },
-      {
-        "command": "remote-sandbox.freestyleResumeVm",
-        "title": "Freestyle: Resume VM",
-        "icon": "$(debug-start)"
-      },
-      {
-        "command": "remote-sandbox.freestyleDeleteVm",
-        "title": "Freestyle: Delete VM",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "remote-sandbox.freestyleListVms",
-        "title": "Freestyle: List VMs"
-      },
-      {
-        "command": "remote-sandbox.connectInCurrentWindow",
+        "command": "remote-tensorlake.connectInCurrentWindow",
         "title": "Connect in Current Window",
         "icon": "$(arrow-right)"
       },
       {
-        "command": "remote-sandbox.connectInNewWindow",
+        "command": "remote-tensorlake.connectInNewWindow",
         "title": "Connect in New Window",
         "icon": "$(empty-window)"
       }
@@ -150,125 +89,48 @@
     "menus": {
       "view/title": [
         {
-          "command": "remote-sandbox.refreshSandboxes",
-          "when": "view == remote-sandbox-sandboxes-sidebar",
+          "command": "remote-tensorlake.refreshSandboxes",
+          "when": "view == remote-tensorlake-sandboxes-sidebar",
           "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
-          "command": "remote-sandbox.tensorlakeCreateSandbox",
-          "when": "viewItem == tensorlakeSection && view == remote-sandbox-sandboxes-sidebar",
+          "command": "remote-tensorlake.tensorlakeCreateSandbox",
+          "when": "viewItem == tensorlakeSection && view == remote-tensorlake-sandboxes-sidebar",
           "group": "inline@0"
         },
         {
-          "command": "remote-sandbox.tensorlakeSuspendSandbox",
-          "when": "viewItem == tensorlakeSandboxRunning && view == remote-sandbox-sandboxes-sidebar",
+          "command": "remote-tensorlake.tensorlakeSuspendSandbox",
+          "when": "viewItem == tensorlakeSandboxRunning && view == remote-tensorlake-sandboxes-sidebar",
           "group": "inline@0"
         },
         {
-          "command": "remote-sandbox.tensorlakeResumeSandbox",
-          "when": "viewItem == tensorlakeSandboxSuspended && view == remote-sandbox-sandboxes-sidebar",
+          "command": "remote-tensorlake.tensorlakeResumeSandbox",
+          "when": "viewItem == tensorlakeSandboxSuspended && view == remote-tensorlake-sandboxes-sidebar",
           "group": "inline@0"
         },
         {
-          "command": "remote-sandbox.connectInCurrentWindow",
-          "when": "viewItem =~ /tensorlakeSandbox(Running.*|Suspended)/ && view == remote-sandbox-sandboxes-sidebar",
+          "command": "remote-tensorlake.connectInCurrentWindow",
+          "when": "viewItem =~ /tensorlakeSandbox(Running.*|Suspended)/ && view == remote-tensorlake-sandboxes-sidebar",
           "group": "inline@1"
         },
         {
-          "command": "remote-sandbox.connectInNewWindow",
-          "when": "viewItem =~ /tensorlakeSandbox(Running.*|Suspended)/ && view == remote-sandbox-sandboxes-sidebar",
+          "command": "remote-tensorlake.connectInNewWindow",
+          "when": "viewItem =~ /tensorlakeSandbox(Running.*|Suspended)/ && view == remote-tensorlake-sandboxes-sidebar",
           "group": "inline@2"
         },
         {
-          "command": "remote-sandbox.tensorlakeDeleteSandbox",
-          "when": "viewItem =~ /tensorlakeSandbox/ && view == remote-sandbox-sandboxes-sidebar",
-          "group": "3_delete@1"
-        },
-        {
-          "command": "remote-sandbox.e2bCreateSandbox",
-          "when": "viewItem == e2bSection && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@0"
-        },
-        {
-          "command": "remote-sandbox.freestyleCreateVm",
-          "when": "viewItem == freestyleSection && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@0"
-        },
-        {
-          "command": "remote-sandbox.e2bPauseSandbox",
-          "when": "viewItem == e2bSandboxRunning && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@0"
-        },
-        {
-          "command": "remote-sandbox.e2bResumeSandbox",
-          "when": "viewItem == e2bSandboxPaused && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@0"
-        },
-        {
-          "command": "remote-sandbox.connectInCurrentWindow",
-          "when": "viewItem =~ /e2bSandbox/ && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@1"
-        },
-        {
-          "command": "remote-sandbox.connectInNewWindow",
-          "when": "viewItem =~ /e2bSandbox/ && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@2"
-        },
-        {
-          "command": "remote-sandbox.e2bDeleteSandbox",
-          "when": "viewItem =~ /e2bSandbox/ && view == remote-sandbox-sandboxes-sidebar",
-          "group": "3_delete@1"
-        },
-        {
-          "command": "remote-sandbox.freestyleSuspendVm",
-          "when": "viewItem == freestyleVmRunning && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@0"
-        },
-        {
-          "command": "remote-sandbox.freestyleStartVm",
-          "when": "viewItem == freestyleVmStopped && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@0"
-        },
-        {
-          "command": "remote-sandbox.freestyleResumeVm",
-          "when": "viewItem == freestyleVmSuspended && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@0"
-        },
-        {
-          "command": "remote-sandbox.connectInCurrentWindow",
-          "when": "viewItem =~ /freestyleVm/ && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@1"
-        },
-        {
-          "command": "remote-sandbox.connectInNewWindow",
-          "when": "viewItem =~ /freestyleVm/ && view == remote-sandbox-sandboxes-sidebar",
-          "group": "inline@2"
-        },
-        {
-          "command": "remote-sandbox.freestyleDeleteVm",
-          "when": "viewItem =~ /freestyleVm/ && view == remote-sandbox-sandboxes-sidebar",
+          "command": "remote-tensorlake.tensorlakeDeleteSandbox",
+          "when": "viewItem =~ /tensorlakeSandbox/ && view == remote-tensorlake-sandboxes-sidebar",
           "group": "3_delete@1"
         }
       ]
     },
     "configuration": {
-      "title": "Remote Sandbox",
+      "title": "Remote Tensorlake",
       "properties": {
-        "remoteSandbox.e2bApiKey": {
-          "type": "string",
-          "default": "",
-          "editPresentation": "password",
-          "markdownDescription": "Your [E2B](https://e2b.dev) API key. The extension uses this to authenticate with the E2B API. Set it here, run the **E2B: Set API Key** command, or use the `E2B_API_KEY` environment variable."
-        },
-        "remoteSandbox.freestyleApiKey": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Your [Freestyle](https://freestyle.sh) API key. The extension uses this to authenticate with the Freestyle API. Set it here, run the **Freestyle: Set API Key** command, or use the `FREESTYLE_API_KEY` environment variable.",
-          "editPresentation": "password"
-        },
-        "remoteSandbox.tensorlakeApiKey": {
+        "remoteTensorlake.tensorlakeApiKey": {
           "type": "string",
           "default": "",
           "editPresentation": "password",

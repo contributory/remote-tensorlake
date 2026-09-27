@@ -35,7 +35,7 @@ interface TensorlakeCreateResponse {
 }
 
 export function getTensorlakeApiKey(): string | undefined {
-  const config = vscode.workspace.getConfiguration("remoteSandbox");
+  const config = vscode.workspace.getConfiguration("remoteTensorlake");
   const apiKey = config.get<string>("tensorlakeApiKey");
   if (apiKey && apiKey.trim().length > 0) {
     return apiKey.trim();
@@ -70,7 +70,7 @@ export async function setTensorlakeApiKey(): Promise<void> {
   }
 
   await vscode.workspace
-    .getConfiguration("remoteSandbox")
+    .getConfiguration("remoteTensorlake")
     .update("tensorlakeApiKey", trimmed, vscode.ConfigurationTarget.Global);
   vscode.window.showInformationMessage("Tensorlake API key saved to settings.");
 
@@ -80,12 +80,12 @@ export async function setTensorlakeApiKey(): Promise<void> {
 function promptApiKey(): void {
   vscode.window
     .showWarningMessage(
-      "No Tensorlake API key found. Set remoteSandbox.tensorlakeApiKey, run Tensorlake: Set API Key, or set TENSORLAKE_API_KEY.",
+      "No Tensorlake API key found. Set remoteTensorlake.tensorlakeApiKey, run Tensorlake: Set API Key, or set TENSORLAKE_API_KEY.",
       "Set API Key",
     )
     .then((selection) => {
       if (selection === "Set API Key") {
-        void vscode.commands.executeCommand("remote-sandbox.tensorlakeSetApiKey");
+        void vscode.commands.executeCommand("remote-tensorlake.tensorlakeSetApiKey");
       }
     });
 }

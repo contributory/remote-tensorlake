@@ -9,16 +9,15 @@ export async function openTensorlakeWorkspace(
   sandboxId: string,
   newWindow: boolean,
   remotePath = DEFAULT_TENSORLAKE_WORKSPACE,
+  sandboxName?: string | null,
 ): Promise<void> {
-  // Tensorlake documents /home/tl-user/workspace as the writable,
-  // snapshot-persisted development directory. Ensure it exists.
   if (remotePath === DEFAULT_TENSORLAKE_WORKSPACE) {
     await createTensorlakeDirectory(sandboxId, remotePath);
   }
 
   await vscode.commands.executeCommand(
     "vscode.openFolder",
-    tensorlakeUri(sandboxId, remotePath),
+    tensorlakeUri(sandboxId, remotePath, sandboxName),
     { forceNewWindow: newWindow },
   );
 }

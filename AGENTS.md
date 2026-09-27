@@ -845,37 +845,22 @@ Acceptance:
 - interactive shell works
 - resize works
 - Ctrl+C/input works as documented by Tensorlake PTY
-- closing terminal cleans up transport
-
 ### Phase 4: switch primary connect path
 
 Deliver:
 
-- Connect opens `tensorlake://` workspace
-- suspended sandbox auto-resumes on explicit connect
-- SSH/Remote-SSH no longer used for primary flow
+- Connect starts/resumes the selected sandbox and opens `/home/tl-user` directly as a `tensorlake://` virtual workspace.
+- Use VS Code `vscode.openFolder` with the custom filesystem URI; do not emulate a remote window with a generated `.code-workspace`.
+- `Open Folder...` browses the sandbox through Tensorlake APIs and only then opens a `tensorlake://` workspace.
+- `Clone Git Repository...` runs `git clone` inside the sandbox and then opens the cloned folder.
+- SSH/Remote-SSH is not used by the primary flow.
 
 Acceptance:
 
+- connecting opens `/home/tl-user` as the default remote root
+- the workspace identity comes from the `tensorlake://<sandbox-id>/...` URI itself
 - normal connect does not install VS Code Server
-- no Remote-SSH dependency required for normal operation
-
-### Phase 5: cleanup
-
-Deliver:
-
-- remove obsolete SSH config code
-- remove obsolete Remote-SSH recommendation/dependency
-- update README
-- package VSIX
-
-Acceptance:
-
-- TypeScript compile passes
-- VSIX packages successfully
-- no stale SSH code remains unless explicitly retained as an optional fallback
-
----
+- no Remote-SSH dependency is required
 
 # Concurrent-agent rules
 

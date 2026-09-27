@@ -20,9 +20,8 @@ import {
   openTensorlakeTerminal,
   TensorlakePseudoterminal,
 } from "./remote/TensorlakePseudoterminal";
-import { DEFAULT_TENSORLAKE_WORKSPACE } from "./remote/uri";
+import { DEFAULT_TENSORLAKE_WORKSPACE, TENSORLAKE_HOME, parseTensorlakeUri } from "./remote/uri";
 import { TensorlakeConnectionStore } from "./remote/connection";
-import { TensorlakeSessionViewProvider } from "./remote/TensorlakeSessionViewProvider";
 import { pickTensorlakeFolder } from "./remote/folderPicker";
 import {
   cloneTensorlakeGitRepository,
@@ -37,6 +36,7 @@ import {
 interface SandboxTarget {
   sandboxId: string;
   label: string;
+  workingDir: string;
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -44,7 +44,7 @@ export function activate(context: vscode.ExtensionContext): void {
   outputChannel.appendLine("Remote Tensorlake is now active!");
 
   const sessionManager = new TensorlakeSessionManager(outputChannel);
-  const connectionStore = new TensorlakeConnectionStore(context);
+  const connectionStore = new TensorlakeConnectionStore();
   const fileSystemProvider = new TensorlakeFileSystemProvider(
     (sandboxId) => sessionManager.ensureRunning(sandboxId),
   );
@@ -65,41 +65,53 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const refreshConnectionContext = async (): Promise<void> => {
     const connected = connectionStore.resolveCurrent();
-    const emptyConnection = connectionStore.isEmptyConnectionWorkspace();
-    const gitAvailable = Boolean(connected?.gitAvailable);
-
-    await Promise.all([
-      vscode.commands.executeCommand(
-        "setContext",
-        "remoteTensorlake.connected",
-        Boolean(connected),
-      ),
-      vscode.commands.executeCommand(
-        "setContext",
-        "remoteTensorlake.emptyConnection",
-        emptyConnection,
-      ),
-      vscode.commands.executeCommand(
-        "setContext",
-        "remoteTensorlake.gitAvailable",
-        gitAvailable,
-      ),
-    ]);
+    await vscode.commands.executeCommand(
+      "setContext",
+      "remoteTensorlake.connected",
+      Boolean(connected),
+    );
 
     if (connected) {
-      connectedStatus.text = `$(remote) Tensorlake: ${connected.name ?? connected.sandboxId}`;
+      connectedStatus.text = `$(remote) Tensorlake: ${connected.name}`;
       connectedStatus.tooltip =
         "Connected to Tensorlake. Click to open a remote terminal.";
       connectedStatus.show();
+      await ensureTensorlakeTerminalDefault();
     } else {
       connectedStatus.hide();
     }
   };
-  void refreshConnectionContext();
 
-  const sessionViewRegistration = vscode.window.registerTreeDataProvider(
-    "remote-tensorlake-session",
-    new TensorlakeSessionViewProvider(),
+  const ensureTensorlakeTerminalDefault = async (): Promise<void> => {
+    const folder = (vscode.workspace.workspaceFolders ?? []).find(
+      (candidate) => candidate.uri.scheme === "tensorlake",
+    );
+    if (!folder) {
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration(
+      "terminal.integrated",
+      folder.uri,
+    );
+    const platform =
+      process.platform === "win32"
+        ? "windows"
+        : process.platform === "darwin"
+          ? "osx"
+          : "linux";
+    const key = `defaultProfile.${platform}`;
+    if (config.get<string>(key) !== "Tensorlake") {
+      await config.update(
+        key,
+        "Tensorlake",
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+    }
+  };
+
+  void refreshConnectionContext().catch((error) =>
+    showConnectionError(error, outputChannel),
   );
 
   const terminalProfileRegistration =
@@ -118,14 +130,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
             if (remoteFolders.length === 1) {
               const folder = remoteFolders[0];
-              sandboxId = folder.uri.authority;
-              workingDir = folder.uri.path || DEFAULT_TENSORLAKE_WORKSPACE;
-              label = folder.name;
+              const parsed = parseTensorlakeUri(folder.uri);
+              sandboxId = parsed.sandboxId;
+              workingDir = parsed.remotePath;
+              label = folder.uri.authority || folder.name;
             } else if (remoteFolders.length > 1) {
               const selected = await vscode.window.showQuickPick(
                 remoteFolders.map((folder) => ({
                   label: folder.name,
-                  description: folder.uri.authority,
+                  description: parseTensorlakeUri(folder.uri).sandboxId,
                   folder,
                 })),
                 { placeHolder: "Select a Tensorlake workspace for the terminal" },
@@ -133,16 +146,16 @@ export function activate(context: vscode.ExtensionContext): void {
               if (!selected) {
                 return undefined;
               }
-              sandboxId = selected.folder.uri.authority;
-              workingDir =
-                selected.folder.uri.path || DEFAULT_TENSORLAKE_WORKSPACE;
-              label = selected.folder.name;
+              const parsed = parseTensorlakeUri(selected.folder.uri);
+              sandboxId = parsed.sandboxId;
+              workingDir = parsed.remotePath;
+              label = selected.folder.uri.authority || selected.folder.name;
             } else {
               const connected = connectionStore.resolveCurrent();
               if (connected) {
                 sandboxId = connected.sandboxId;
-                workingDir = DEFAULT_TENSORLAKE_WORKSPACE;
-                label = connected.name ?? connected.sandboxId;
+                workingDir = connected.remotePath;
+                label = connected.name;
               } else {
                 const sandbox = await pickTensorlakeSandbox(outputChannel);
                 if (!sandbox) {
@@ -286,6 +299,7 @@ export function activate(context: vscode.ExtensionContext): void {
             connected.sandboxId,
             false,
             remotePath,
+            connected.name,
           );
         } catch (error) {
           showConnectionError(error, outputChannel);
@@ -365,6 +379,26 @@ export function activate(context: vscode.ExtensionContext): void {
             connected.sandboxId,
             false,
             clonedPath,
+            connected.name,
+          );
+        } catch (error) {
+          showConnectionError(error, outputChannel);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.openTerminalAtPath",
+      async (resource: vscode.Uri | undefined) => {
+        if (!resource || resource.scheme !== "tensorlake") {
+          return;
+        }
+
+        try {
+          const parsed = parseTensorlakeUri(resource);
+          await sessionManager.ensureRunning(parsed.sandboxId, true);
+          openTensorlakeTerminal(
+            parsed.sandboxId,
+            parsed.remotePath,
           );
         } catch (error) {
           showConnectionError(error, outputChannel);
@@ -392,7 +426,7 @@ export function activate(context: vscode.ExtensionContext): void {
             },
             () => sessionManager.ensureRunning(target.sandboxId, true),
           );
-          openTensorlakeTerminal(target.sandboxId);
+          openTensorlakeTerminal(target.sandboxId, target.workingDir);
         } catch (error) {
           showConnectionError(error, outputChannel);
         }
@@ -497,11 +531,11 @@ export function activate(context: vscode.ExtensionContext): void {
         },
         async () => {
           await sessionManager.ensureRunning(sandbox.sandbox_id, true);
-          const gitAvailable = await tensorlakeHasGit(sandbox.sandbox_id);
-          await connectionStore.openEmptyConnection(
-            sandbox,
+          await openTensorlakeWorkspace(
+            sandbox.sandbox_id,
             newWindow,
-            gitAvailable,
+            TENSORLAKE_HOME,
+            sandbox.name,
           );
         },
       );
@@ -512,7 +546,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     fileSystemRegistration,
-    sessionViewRegistration,
     terminalProfileRegistration,
     fileSystemProvider,
     sessionManager,
@@ -531,6 +564,7 @@ async function resolveSandboxTarget(
     return {
       sandboxId: item.sandbox.sandbox_id,
       label: item.sandbox.name ?? item.sandbox.sandbox_id,
+      workingDir: TENSORLAKE_HOME,
     };
   }
 
@@ -538,7 +572,8 @@ async function resolveSandboxTarget(
   if (connected) {
     return {
       sandboxId: connected.sandboxId,
-      label: connected.name ?? connected.sandboxId,
+      label: connected.name,
+      workingDir: connected.remotePath,
     };
   }
 
@@ -549,6 +584,7 @@ async function resolveSandboxTarget(
   return {
     sandboxId: sandbox.sandbox_id,
     label: sandbox.name ?? sandbox.sandbox_id,
+    workingDir: TENSORLAKE_HOME,
   };
 }
 

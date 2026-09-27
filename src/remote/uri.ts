@@ -2,11 +2,13 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 export const TENSORLAKE_SCHEME = "tensorlake";
-export const DEFAULT_TENSORLAKE_WORKSPACE = "/home/tl-user/workspace";
+export const TENSORLAKE_HOME = "/home/tl-user";
+export const DEFAULT_TENSORLAKE_WORKSPACE = `${TENSORLAKE_HOME}/workspace`;
 
 export function tensorlakeUri(
   sandboxId: string,
   remotePath = DEFAULT_TENSORLAKE_WORKSPACE,
+  sandboxName?: string | null,
 ): vscode.Uri {
   if (!sandboxId.trim()) {
     throw new Error("Tensorlake sandbox id is required.");
@@ -16,10 +18,16 @@ export function tensorlakeUri(
     remotePath.startsWith("/") ? remotePath : `/${remotePath}`,
   );
 
+  const authority = sandboxName?.trim() || sandboxId;
+  const query = authority === sandboxId
+    ? ""
+    : new URLSearchParams({ sandboxId }).toString();
+
   return vscode.Uri.from({
     scheme: TENSORLAKE_SCHEME,
-    authority: sandboxId,
+    authority,
     path: normalized === "." ? "/" : normalized,
+    query,
   });
 }
 
@@ -32,8 +40,10 @@ export function parseTensorlakeUri(uri: vscode.Uri): {
   }
 
   const remotePath = path.posix.normalize(uri.path || "/");
+  const query = new URLSearchParams(uri.query);
+  const sandboxId = query.get("sandboxId")?.trim() || uri.authority;
   return {
-    sandboxId: uri.authority,
+    sandboxId,
     remotePath: remotePath.startsWith("/") ? remotePath : `/${remotePath}`,
   };
 }

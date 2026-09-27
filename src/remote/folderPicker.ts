@@ -11,7 +11,7 @@ import {
 import { DEFAULT_TENSORLAKE_WORKSPACE } from "./uri";
 
 interface FolderPickItem extends vscode.QuickPickItem {
-  kind: "select" | "up" | "folder";
+  action: "select" | "up" | "folder";
   remotePath: string;
 }
 
@@ -49,7 +49,7 @@ export async function pickTensorlakeFolder(
       {
         label: "$(folder-opened) Open this folder",
         description: current,
-        kind: "select",
+        action: "select",
         remotePath: current,
       },
     ];
@@ -58,7 +58,7 @@ export async function pickTensorlakeFolder(
       items.push({
         label: "$(arrow-up) ..",
         description: path.posix.dirname(current),
-        kind: "up",
+        action: "up",
         remotePath: path.posix.dirname(current),
       });
     }
@@ -70,7 +70,7 @@ export async function pickTensorlakeFolder(
         .map((entry) => ({
           label: `$(folder) ${entry.name}`,
           description: path.posix.join(current, entry.name),
-          kind: "folder" as const,
+          action: "folder" as const,
           remotePath: path.posix.join(current, entry.name),
         })),
     );
@@ -82,7 +82,7 @@ export async function pickTensorlakeFolder(
     if (!picked) {
       return undefined;
     }
-    if (picked.kind === "select") {
+    if (picked.action === "select") {
       return picked.remotePath;
     }
     current = picked.remotePath;

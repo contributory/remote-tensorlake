@@ -64,19 +64,20 @@ The sandbox tree supports:
 
 ### Connect
 
-**Connect** opens the persisted development directory:
+**Connect** starts or resumes the selected sandbox and opens `/home/tl-user`
+directly as a `tensorlake://` virtual workspace through VS Code's `vscode.openFolder` API.
+
+- **Tensorlake: Open Folder...** can switch to another sandbox directory through
+  the Tensorlake Files API.
+- **Clone Git Repository...** is available when `git` exists in the sandbox.
+  The clone runs inside Tensorlake and the cloned directory is opened afterward.
+- **Open Extensions** opens the normal VS Code Extensions view.
+
+Opening a selected directory produces a URI such as:
 
 ```text
-/home/tl-user/workspace
+tensorlake://<sandbox-name>/home/tl-user/workspace?sandboxId=<sandbox-id>
 ```
-
-as a virtual workspace such as:
-
-```text
-tensorlake://<sandbox-id>/home/tl-user/workspace
-```
-
-A suspended named sandbox is resumed before the workspace is opened.
 
 Files are read and written as raw bytes through the Tensorlake sandbox proxy.
 Directory creation and rename operations use lightweight Tensorlake process
@@ -85,7 +86,10 @@ calls where the Files API does not expose equivalent operations.
 ### Terminal
 
 **Tensorlake: Open Terminal** creates a PTY session through Tensorlake's PTY API
-and connects it to a VS Code `Pseudoterminal`.
+and connects it to a VS Code `Pseudoterminal`. Tensorlake connection workspaces
+set this profile as the workspace default, so **New Terminal** opens the remote
+PTY instead of a local shell. Folder context menus also provide **Open in
+Tensorlake Terminal** and start the shell in the selected remote directory.
 
 Terminal input, output, resize events, Ctrl+C, and process exit all travel over
 the Tensorlake PTY WebSocket protocol. No VS Code Server is installed.

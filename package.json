@@ -2,7 +2,7 @@
   "name": "vscode-remote-tensorlake",
   "displayName": "Remote Tensorlake",
   "description": "Manage Tensorlake sandboxes and open lightweight remote workspaces without VS Code Server.",
-  "version": "0.0.2",
+  "version": "0.0.9",
   "repository": {
     "type": "git",
     "url": "https://github.com/starfall-org/remote-sandbox-vscode.git"
@@ -95,9 +95,24 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "remote-tensorlake.openTerminalAtPath",
+        "title": "Open in Tensorlake Terminal",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "remote-tensorlake.exposePublicPort",
         "title": "Tensorlake: Expose Public Port",
         "icon": "$(globe)"
+      },
+      {
+        "command": "remote-tensorlake.openConnectedFolder",
+        "title": "Tensorlake: Open Folder...",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "remote-tensorlake.cloneGitRepository",
+        "title": "Tensorlake: Clone Git Repository...",
+        "icon": "$(repo-clone)"
       }
     ],
     "menus": {
@@ -149,6 +164,13 @@
           "when": "viewItem =~ /tensorlakeSandbox(Running.*|Suspended)/ && view == remote-tensorlake-sandboxes-sidebar",
           "group": "2_network@1"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "remote-tensorlake.openTerminalAtPath",
+          "when": "resourceScheme == tensorlake && explorerResourceIsFolder",
+          "group": "navigation@10"
+        }
       ]
     },
     "configuration": {
@@ -158,7 +180,8 @@
           "type": "string",
           "default": "",
           "editPresentation": "password",
-          "markdownDescription": "Your [Tensorlake](https://tensorlake.ai) API key. The extension uses it for sandbox lifecycle and lightweight remote operations. Set it here, run **Tensorlake: Set API Key**, or use the `TENSORLAKE_API_KEY` environment variable."
+          "markdownDescription": "Your [Tensorlake](https://tensorlake.ai) API key. The extension uses it for sandbox lifecycle and lightweight remote operations. You can also use `TENSORLAKE_API_KEY`.",
+          "scope": "application"
         }
       }
     },

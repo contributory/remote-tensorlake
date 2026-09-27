@@ -1,21 +1,25 @@
 {
   "name": "vscode-remote-tensorlake",
   "displayName": "Remote Tensorlake",
-  "description": "Manage Tensorlake sandboxes and connect to them over SSH from VS Code.",
-  "version": "2.4.2",
+  "description": "Manage Tensorlake sandboxes and open lightweight remote workspaces without VS Code Server.",
+  "version": "0.0.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/starfall-org/remote-sandbox-vscode.git"
   },
   "license": "GPL-3.0-only",
-  "publisher": "starfall",
+  "publisher": "starfall-orbit",
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onFileSystem:tensorlake",
+    "onView:remote-tensorlake-sandboxes-sidebar",
+    "onTerminalProfile:remote-tensorlake.terminal"
+  ],
   "extensionKind": [
     "ui"
   ],
@@ -73,7 +77,7 @@
       },
       {
         "command": "remote-tensorlake.tensorlakeListSandboxes",
-        "title": "Tensorlake: List Sandboxes"
+        "title": "Tensorlake: Connect"
       },
       {
         "command": "remote-tensorlake.connectInCurrentWindow",
@@ -84,6 +88,16 @@
         "command": "remote-tensorlake.connectInNewWindow",
         "title": "Connect in New Window",
         "icon": "$(empty-window)"
+      },
+      {
+        "command": "remote-tensorlake.openTerminal",
+        "title": "Tensorlake: Open Terminal",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "remote-tensorlake.exposePublicPort",
+        "title": "Tensorlake: Expose Public Port",
+        "icon": "$(globe)"
       }
     ],
     "menus": {
@@ -121,9 +135,19 @@
           "group": "inline@2"
         },
         {
+          "command": "remote-tensorlake.openTerminal",
+          "when": "viewItem =~ /tensorlakeSandbox(Running.*|Suspended)/ && view == remote-tensorlake-sandboxes-sidebar",
+          "group": "inline@3"
+        },
+        {
           "command": "remote-tensorlake.tensorlakeDeleteSandbox",
           "when": "viewItem =~ /tensorlakeSandbox/ && view == remote-tensorlake-sandboxes-sidebar",
           "group": "3_delete@1"
+        },
+        {
+          "command": "remote-tensorlake.exposePublicPort",
+          "when": "viewItem =~ /tensorlakeSandbox(Running.*|Suspended)/ && view == remote-tensorlake-sandboxes-sidebar",
+          "group": "2_network@1"
         }
       ]
     },
@@ -134,9 +158,18 @@
           "type": "string",
           "default": "",
           "editPresentation": "password",
-          "markdownDescription": "Your [Tensorlake](https://tensorlake.ai) API key. The extension uses it for sandbox lifecycle operations. Set it here, run **Tensorlake: Set API Key**, or use the `TENSORLAKE_API_KEY` environment variable."
+          "markdownDescription": "Your [Tensorlake](https://tensorlake.ai) API key. The extension uses it for sandbox lifecycle and lightweight remote operations. Set it here, run **Tensorlake: Set API Key**, or use the `TENSORLAKE_API_KEY` environment variable."
         }
       }
+    },
+    "terminal": {
+      "profiles": [
+        {
+          "id": "remote-tensorlake.terminal",
+          "title": "Tensorlake",
+          "icon": "cloud"
+        }
+      ]
     }
   },
   "scripts": {
@@ -147,7 +180,11 @@
   "devDependencies": {
     "@types/node": "^20.19.43",
     "@types/vscode": "^1.80.0",
+    "@types/ws": "^8.18.1",
     "@vscode/vsce": "^3.9.2",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
   }
 }

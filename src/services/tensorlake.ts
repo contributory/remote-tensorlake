@@ -1,10 +1,6 @@
 import * as vscode from "vscode";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 
-const TENSORLAKE_SANDBOX_API_BASE = "https://sandbox.tensorlake.ai";
-const SSH_READY_TIMEOUT_MS = 30_000;
+const TENSORLAKE_SANDBOX_API_BASE = "https://api.tensorlake.ai";
 
 export interface TensorlakeSandbox {
   sandbox_id: string;
@@ -167,21 +163,6 @@ function normalizeTensorlakeSandbox(
     ...rest,
     sandbox_id: sandboxId,
   };
-}
-
-async function getTensorlakeSandbox(
-  sandboxId: string,
-  apiKey: string,
-): Promise<TensorlakeSandbox> {
-  const raw = await tensorlakeSandboxRequest<TensorlakeSandboxApi>(
-    `/sandboxes/${encodeURIComponent(sandboxId)}`,
-    apiKey,
-  );
-  const sandbox = normalizeTensorlakeSandbox(raw);
-  if (!sandbox) {
-    throw new Error("Tensorlake returned sandbox data without an id.");
-  }
-  return sandbox;
 }
 
 export async function listTensorlakeSandboxes(
@@ -355,11 +336,11 @@ export async function createTensorlakeSandbox(
 export async function suspendTensorlakeSandbox(
   sandboxId: string,
   outputChannel: vscode.OutputChannel,
-): Promise<void> {
+): Promise<boolean> {
   const apiKey = getTensorlakeApiKey();
   if (!apiKey) {
     promptApiKey();
-    return;
+    return false;
   }
 
   try {
@@ -382,23 +363,25 @@ export async function suspendTensorlakeSandbox(
     vscode.window.showInformationMessage(
       `Tensorlake sandbox suspended: ${sandboxId}.`,
     );
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     outputChannel.appendLine(`[Tensorlake] Error: ${message}`);
     vscode.window.showErrorMessage(
       `Failed to suspend Tensorlake sandbox: ${message}`,
     );
+    return false;
   }
 }
 
 export async function resumeTensorlakeSandbox(
   sandboxId: string,
   outputChannel: vscode.OutputChannel,
-): Promise<void> {
+): Promise<boolean> {
   const apiKey = getTensorlakeApiKey();
   if (!apiKey) {
     promptApiKey();
-    return;
+    return false;
   }
 
   try {
@@ -419,23 +402,25 @@ export async function resumeTensorlakeSandbox(
     vscode.window.showInformationMessage(
       `Tensorlake sandbox resumed: ${sandboxId}.`,
     );
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     outputChannel.appendLine(`[Tensorlake] Error: ${message}`);
     vscode.window.showErrorMessage(
       `Failed to resume Tensorlake sandbox: ${message}`,
     );
+    return false;
   }
 }
 
 export async function deleteTensorlakeSandbox(
   sandboxId: string,
   outputChannel: vscode.OutputChannel,
-): Promise<void> {
+): Promise<boolean> {
   const apiKey = getTensorlakeApiKey();
   if (!apiKey) {
     promptApiKey();
-    return;
+    return false;
   }
 
   const confirm = await vscode.window.showWarningMessage(
@@ -444,7 +429,7 @@ export async function deleteTensorlakeSandbox(
     "Terminate",
   );
   if (confirm !== "Terminate") {
-    return;
+    return false;
   }
 
   try {
@@ -467,139 +452,13 @@ export async function deleteTensorlakeSandbox(
     vscode.window.showInformationMessage(
       `Tensorlake sandbox terminated: ${sandboxId}.`,
     );
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     outputChannel.appendLine(`[Tensorlake] Error: ${message}`);
     vscode.window.showErrorMessage(
       `Failed to terminate Tensorlake sandbox: ${message}`,
     );
-  }
-}
-
-function tensorlakeHostAlias(sandbox: TensorlakeSandbox): string {
-  return sandbox.name ? `TL_${sandbox.name}` : `TL_${sandbox.sandbox_id}`;
-}
-
-async function waitForTensorlakeSshReady(
-  sandboxId: string,
-  apiKey: string,
-): Promise<TensorlakeSandbox> {
-  const deadline = Date.now() + SSH_READY_TIMEOUT_MS;
-  let last: TensorlakeSandbox | undefined;
-
-  while (Date.now() < deadline) {
-    last = await getTensorlakeSandbox(sandboxId, apiKey);
-
-    const status = last.status.toLowerCase();
-    if (status === "running" && last.sandbox_url) {
-      return last;
-    }
-    if (status === "terminated" || status === "failed") {
-      throw new Error(`Sandbox is ${last.status} and cannot be connected.`);
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-
-  throw new Error(
-    `Sandbox did not become SSH-ready within ${SSH_READY_TIMEOUT_MS / 1000} seconds (last status: ${last?.status ?? "unknown"}).`,
-  );
-}
-
-function buildTensorlakeSshBlock(
-  sandbox: TensorlakeSandbox,
-): string {
-  if (!sandbox.sandbox_url) {
-    throw new Error("Tensorlake did not return sandbox_url for SSH.");
-  }
-
-  const hostname = new URL(sandbox.sandbox_url).hostname;
-
-  const lines = [
-    `Host ${tensorlakeHostAlias(sandbox)}`,
-    `    HostName ${hostname}`,
-    `    User ${sandbox.sandbox_id}`,
-    "    IdentityFile ~/.ssh/id_ed25519_tensorlake",
-    "    IdentitiesOnly yes",
-    "    ServerAliveInterval 30",
-    "    ServerAliveCountMax 3",
-    "",
-  ];
-
-  return lines.join("\n");
-}
-
-function ensureTensorlakeSshConfig(
-  sandbox: TensorlakeSandbox,
-  outputChannel: vscode.OutputChannel,
-): string {
-  const sshDir = path.join(os.homedir(), ".ssh");
-  fs.mkdirSync(sshDir, { recursive: true, mode: 0o700 });
-
-  const configPath = path.join(sshDir, "tensorlake.conf");
-  const expected = buildTensorlakeSshBlock(sandbox);
-  const existing = fs.existsSync(configPath)
-    ? fs.readFileSync(configPath, "utf8")
-    : "";
-
-  if (existing.trim() !== expected.trim()) {
-    fs.writeFileSync(configPath, expected, { mode: 0o600 });
-    outputChannel.appendLine(
-      `[Tensorlake] SSH config written to ${configPath}.`,
-    );
-  } else {
-    outputChannel.appendLine(
-      `[Tensorlake] SSH config already up to date (Host: ${tensorlakeHostAlias(sandbox)}).`,
-    );
-  }
-
-  outputChannel.appendLine("[Tensorlake] Ensure ~/.ssh/config contains:");
-  outputChannel.appendLine(`Include "${configPath}"`);
-
-  return tensorlakeHostAlias(sandbox);
-}
-
-export async function connectTensorlakeSandbox(
-  sandbox: TensorlakeSandbox,
-  outputChannel: vscode.OutputChannel,
-): Promise<string | undefined> {
-  const apiKey = getTensorlakeApiKey();
-  if (!apiKey) {
-    outputChannel.appendLine("[Tensorlake] API key is not configured.");
-    promptApiKey();
-    return undefined;
-  }
-
-  outputChannel.show(true);
-
-  try {
-    let current = await getTensorlakeSandbox(sandbox.sandbox_id, apiKey);
-    const status = current.status.toLowerCase();
-
-    if (status === "suspended") {
-      if (!current.name) {
-        throw new Error(
-          "This sandbox is suspended but has no name, so it cannot be resumed.",
-        );
-      }
-      outputChannel.appendLine(
-        `[Tensorlake] Resuming sandbox: ${current.sandbox_id}`,
-      );
-      await tensorlakeSandboxRequest<void>(
-        `/sandboxes/${encodeURIComponent(current.sandbox_id)}/resume`,
-        apiKey,
-        "POST",
-      );
-      current = await waitForTensorlakeSshReady(current.sandbox_id, apiKey);
-    } else if (status !== "running" || !current.sandbox_url) {
-      current = await waitForTensorlakeSshReady(current.sandbox_id, apiKey);
-    }
-
-    return ensureTensorlakeSshConfig(current, outputChannel);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    outputChannel.appendLine(`[Tensorlake] SSH error: ${message}`);
-    vscode.window.showErrorMessage(`Tensorlake SSH error: ${message}`);
-    return undefined;
+    return false;
   }
 }

@@ -73,6 +73,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   );
 
+  const documentWorkspaceLogger = vscode.workspace.onDidOpenTextDocument(
+    (document) => {
+      if (document.uri.scheme !== "tensorlake") {
+        return;
+      }
+      const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+      outputChannel.info(
+        "Workspace containment: uri=" +
+          document.uri.toString() +
+          " workspace=" +
+          (folder?.uri.toString() ?? "none"),
+      );
+    },
+  );
+
   const refreshConnectionContext = async (): Promise<void> => {
     const connected = connectionStore.resolveCurrent();
     await vscode.commands.executeCommand(
@@ -797,6 +812,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   context.subscriptions.push(
+    documentWorkspaceLogger,
     fileSystemRegistration,
     terminalProfileRegistration,
     fileSystemProvider,

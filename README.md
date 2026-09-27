@@ -76,7 +76,7 @@ directly as a `tensorlake://` virtual workspace through VS Code's `vscode.openFo
 Opening a selected directory produces a URI such as:
 
 ```text
-tensorlake://<sandbox-name>/home/tl-user/workspace?sandboxId=<sandbox-id>
+tensorlake://<sandbox-name>/.tensorlake/<sandbox-id>/home/tl-user/workspace
 ```
 
 Files are read and written as raw bytes through the Tensorlake sandbox proxy.

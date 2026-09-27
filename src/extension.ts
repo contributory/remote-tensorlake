@@ -744,11 +744,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           outputChannel.info(
             `Opening Tensorlake virtual workspace: sandbox=${sandbox.sandbox_id} name=${sandbox.name ?? ""} path=${TENSORLAKE_HOME}`,
           );
-          await provider.rememberRecentFolder(
-            sandbox.sandbox_id,
-            sandbox.name,
-            TENSORLAKE_HOME,
-          );
           await openTensorlakeTarget(
             sandbox.sandbox_id,
             sandbox.name,

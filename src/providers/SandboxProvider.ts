@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { TENSORLAKE_HOME } from "../remote/uri";
 import {
   hasTensorlakeApiKey,
   listTensorlakeSandboxes,
@@ -158,6 +159,10 @@ export class SandboxProvider
     const normalized = path.posix.normalize(
       remotePath.startsWith("/") ? remotePath : `/${remotePath}`,
     );
+    if (normalized === TENSORLAKE_HOME) {
+      return;
+    }
+
     const all = this.readAllRecentFolders().filter(
       (item) =>
         !(
@@ -235,7 +240,10 @@ export class SandboxProvider
             typeof item === "object" &&
             typeof (item as TensorlakeRecentFolder).sandboxId === "string" &&
             typeof (item as TensorlakeRecentFolder).remotePath === "string" &&
-            typeof (item as TensorlakeRecentFolder).lastUsedAt === "number",
+            typeof (item as TensorlakeRecentFolder).lastUsedAt === "number" &&
+            path.posix.normalize(
+              (item as TensorlakeRecentFolder).remotePath,
+            ) !== TENSORLAKE_HOME,
         ),
     );
   }

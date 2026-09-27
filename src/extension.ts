@@ -21,15 +21,30 @@ import {
   TensorlakePseudoterminal,
 } from "./remote/TensorlakePseudoterminal";
 import { DEFAULT_TENSORLAKE_WORKSPACE } from "./remote/uri";
+import { TensorlakeConnectionStore } from "./remote/connection";
+import { TensorlakeSessionViewProvider } from "./remote/TensorlakeSessionViewProvider";
+import { pickTensorlakeFolder } from "./remote/folderPicker";
+import {
+  cloneTensorlakeGitRepository,
+  tensorlakeHasGit,
+} from "./remote/git";
+import { createTensorlakeDirectory } from "./tensorlake/processes";
 import {
   exposeTensorlakePort,
   publicTensorlakePortUrl,
 } from "./tensorlake/lifecycle";
 
+interface SandboxTarget {
+  sandboxId: string;
+  label: string;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("Remote Tensorlake");
   outputChannel.appendLine("Remote Tensorlake is now active!");
+
   const sessionManager = new TensorlakeSessionManager(outputChannel);
+  const connectionStore = new TensorlakeConnectionStore(context);
   const fileSystemProvider = new TensorlakeFileSystemProvider(
     (sandboxId) => sessionManager.ensureRunning(sandboxId),
   );
@@ -40,6 +55,51 @@ export function activate(context: vscode.ExtensionContext): void {
       isCaseSensitive: true,
       isReadonly: false,
     },
+  );
+
+  const connectedStatus = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    100,
+  );
+  connectedStatus.command = "remote-tensorlake.openTerminal";
+
+  const refreshConnectionContext = async (): Promise<void> => {
+    const connected = connectionStore.resolveCurrent();
+    const emptyConnection = connectionStore.isEmptyConnectionWorkspace();
+    const gitAvailable = Boolean(connected?.gitAvailable);
+
+    await Promise.all([
+      vscode.commands.executeCommand(
+        "setContext",
+        "remoteTensorlake.connected",
+        Boolean(connected),
+      ),
+      vscode.commands.executeCommand(
+        "setContext",
+        "remoteTensorlake.emptyConnection",
+        emptyConnection,
+      ),
+      vscode.commands.executeCommand(
+        "setContext",
+        "remoteTensorlake.gitAvailable",
+        gitAvailable,
+      ),
+    ]);
+
+    if (connected) {
+      connectedStatus.text = `$(remote) Tensorlake: ${connected.name ?? connected.sandboxId}`;
+      connectedStatus.tooltip =
+        "Connected to Tensorlake. Click to open a remote terminal.";
+      connectedStatus.show();
+    } else {
+      connectedStatus.hide();
+    }
+  };
+  void refreshConnectionContext();
+
+  const sessionViewRegistration = vscode.window.registerTreeDataProvider(
+    "remote-tensorlake-session",
+    new TensorlakeSessionViewProvider(),
   );
 
   const terminalProfileRegistration =
@@ -78,13 +138,20 @@ export function activate(context: vscode.ExtensionContext): void {
                 selected.folder.uri.path || DEFAULT_TENSORLAKE_WORKSPACE;
               label = selected.folder.name;
             } else {
-              const sandbox = await pickTensorlakeSandbox(outputChannel);
-              if (!sandbox) {
-                return undefined;
+              const connected = connectionStore.resolveCurrent();
+              if (connected) {
+                sandboxId = connected.sandboxId;
+                workingDir = DEFAULT_TENSORLAKE_WORKSPACE;
+                label = connected.name ?? connected.sandboxId;
+              } else {
+                const sandbox = await pickTensorlakeSandbox(outputChannel);
+                if (!sandbox) {
+                  return undefined;
+                }
+                sandboxId = sandbox.sandbox_id;
+                workingDir = DEFAULT_TENSORLAKE_WORKSPACE;
+                label = sandbox.name ?? sandbox.sandbox_id;
               }
-              sandboxId = sandbox.sandbox_id;
-              workingDir = DEFAULT_TENSORLAKE_WORKSPACE;
-              label = sandbox.name ?? sandbox.sandbox_id;
             }
 
             await sessionManager.ensureRunning(sandboxId, true);
@@ -183,9 +250,6 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     ),
-  );
-
-  context.subscriptions.push(
     vscode.commands.registerCommand(
       "remote-tensorlake.refreshSandboxes",
       () => provider.refresh(),
@@ -202,13 +266,120 @@ export function activate(context: vscode.ExtensionContext): void {
       (item: SandboxTreeItem | undefined) => connectTreeItem(item, true),
     ),
     vscode.commands.registerCommand(
+      "remote-tensorlake.openConnectedFolder",
+      async () => {
+        const connected = connectionStore.resolveCurrent();
+        if (!connected) {
+          vscode.window.showErrorMessage(
+            "Connect to a Tensorlake sandbox before opening a remote folder.",
+          );
+          return;
+        }
+
+        try {
+          await sessionManager.ensureRunning(connected.sandboxId, true);
+          const remotePath = await pickTensorlakeFolder(connected.sandboxId);
+          if (!remotePath) {
+            return;
+          }
+          await openTensorlakeWorkspace(
+            connected.sandboxId,
+            false,
+            remotePath,
+          );
+        } catch (error) {
+          showConnectionError(error, outputChannel);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.cloneGitRepository",
+      async () => {
+        const connected = connectionStore.resolveCurrent();
+        if (!connected) {
+          vscode.window.showErrorMessage(
+            "Connect to a Tensorlake sandbox before cloning a repository.",
+          );
+          return;
+        }
+
+        try {
+          await sessionManager.ensureRunning(connected.sandboxId, true);
+          const hasGit = await tensorlakeHasGit(connected.sandboxId);
+          await vscode.commands.executeCommand(
+            "setContext",
+            "remoteTensorlake.gitAvailable",
+            hasGit,
+          );
+          if (!hasGit) {
+            vscode.window.showErrorMessage(
+              "Git is not installed in this Tensorlake sandbox.",
+            );
+            return;
+          }
+
+          const repositoryUrl = await vscode.window.showInputBox({
+            title: "Clone Git Repository",
+            prompt: "GitHub repository URL",
+            placeHolder: "https://github.com/owner/repository.git",
+            ignoreFocusOut: true,
+            validateInput: (value) => {
+              const trimmed = value.trim();
+              if (!trimmed) {
+                return "Enter a repository URL.";
+              }
+              if (trimmed.startsWith("-")) {
+                return "Repository URL cannot start with '-'.";
+              }
+              return null;
+            },
+          });
+          if (!repositoryUrl) {
+            return;
+          }
+
+          await createTensorlakeDirectory(
+            connected.sandboxId,
+            DEFAULT_TENSORLAKE_WORKSPACE,
+          );
+          const parentPath = await pickTensorlakeFolder(connected.sandboxId);
+          if (!parentPath) {
+            return;
+          }
+
+          const clonedPath = await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Cloning repository in Tensorlake...",
+              cancellable: false,
+            },
+            () =>
+              cloneTensorlakeGitRepository(
+                connected.sandboxId,
+                repositoryUrl.trim(),
+                parentPath,
+              ),
+          );
+
+          await openTensorlakeWorkspace(
+            connected.sandboxId,
+            false,
+            clonedPath,
+          );
+        } catch (error) {
+          showConnectionError(error, outputChannel);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
       "remote-tensorlake.openTerminal",
       async (item: SandboxTreeItem | undefined) => {
-        const sandbox =
-          item instanceof TensorlakeSandboxItem
-            ? item.sandbox
-            : await pickTensorlakeSandbox(outputChannel);
-        if (!sandbox) {
+        const target = await resolveSandboxTarget(
+          item,
+          connectionStore,
+          outputChannel,
+        );
+        if (!target) {
           return;
         }
 
@@ -216,12 +387,12 @@ export function activate(context: vscode.ExtensionContext): void {
           await vscode.window.withProgress(
             {
               location: vscode.ProgressLocation.Notification,
-              title: `Connecting to Tensorlake sandbox ${sandbox.name ?? sandbox.sandbox_id}...`,
+              title: `Connecting to Tensorlake sandbox ${target.label}...`,
               cancellable: false,
             },
-            () => sessionManager.ensureRunning(sandbox.sandbox_id, true),
+            () => sessionManager.ensureRunning(target.sandboxId, true),
           );
-          openTensorlakeTerminal(sandbox.sandbox_id);
+          openTensorlakeTerminal(target.sandboxId);
         } catch (error) {
           showConnectionError(error, outputChannel);
         }
@@ -230,11 +401,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "remote-tensorlake.exposePublicPort",
       async (item: SandboxTreeItem | undefined) => {
-        const sandbox =
-          item instanceof TensorlakeSandboxItem
-            ? item.sandbox
-            : await pickTensorlakeSandbox(outputChannel);
-        if (!sandbox) {
+        const target = await resolveSandboxTarget(
+          item,
+          connectionStore,
+          outputChannel,
+        );
+        if (!target) {
           return;
         }
 
@@ -256,7 +428,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         try {
           const current = await sessionManager.ensureRunning(
-            sandbox.sandbox_id,
+            target.sandboxId,
             true,
           );
           const existingPorts = current.exposed_ports ?? [];
@@ -275,10 +447,10 @@ export function activate(context: vscode.ExtensionContext): void {
           }
 
           const updated = await exposeTensorlakePort(
-            sandbox.sandbox_id,
+            target.sandboxId,
             port,
           );
-          sessionManager.invalidate(sandbox.sandbox_id);
+          sessionManager.invalidate(target.sandboxId);
           const publicUrl = publicTensorlakePortUrl(updated, port);
           const action = await vscode.window.showInformationMessage(
             `Tensorlake port ${port} is public at ${publicUrl}`,
@@ -320,12 +492,17 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `Opening Tensorlake sandbox ${sandbox.name ?? sandbox.sandbox_id}...`,
+          title: `Connecting to Tensorlake sandbox ${sandbox.name ?? sandbox.sandbox_id}...`,
           cancellable: false,
         },
         async () => {
           await sessionManager.ensureRunning(sandbox.sandbox_id, true);
-          await openTensorlakeWorkspace(sandbox.sandbox_id, newWindow);
+          const gitAvailable = await tensorlakeHasGit(sandbox.sandbox_id);
+          await connectionStore.openEmptyConnection(
+            sandbox,
+            newWindow,
+            gitAvailable,
+          );
         },
       );
     } catch (error) {
@@ -335,12 +512,44 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     fileSystemRegistration,
+    sessionViewRegistration,
     terminalProfileRegistration,
     fileSystemProvider,
     sessionManager,
+    connectedStatus,
     outputChannel,
     treeView,
   );
+}
+
+async function resolveSandboxTarget(
+  item: SandboxTreeItem | undefined,
+  connectionStore: TensorlakeConnectionStore,
+  outputChannel: vscode.OutputChannel,
+): Promise<SandboxTarget | undefined> {
+  if (item instanceof TensorlakeSandboxItem) {
+    return {
+      sandboxId: item.sandbox.sandbox_id,
+      label: item.sandbox.name ?? item.sandbox.sandbox_id,
+    };
+  }
+
+  const connected = connectionStore.resolveCurrent();
+  if (connected) {
+    return {
+      sandboxId: connected.sandboxId,
+      label: connected.name ?? connected.sandboxId,
+    };
+  }
+
+  const sandbox = await pickTensorlakeSandbox(outputChannel);
+  if (!sandbox) {
+    return undefined;
+  }
+  return {
+    sandboxId: sandbox.sandbox_id,
+    label: sandbox.name ?? sandbox.sandbox_id,
+  };
 }
 
 async function pickTensorlakeSandbox(

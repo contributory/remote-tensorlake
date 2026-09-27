@@ -10,6 +10,7 @@ import {
 } from "./services/tensorlake";
 import {
   SandboxProvider,
+  TensorlakeRecentFolderItem,
   TensorlakeSandboxItem,
   SandboxTreeItem,
 } from "./providers/SandboxProvider";
@@ -32,6 +33,7 @@ import { createTensorlakeDirectory } from "./tensorlake/processes";
 import {
   exposeTensorlakePort,
   publicTensorlakePortUrl,
+  removeTensorlakePort,
 } from "./tensorlake/lifecycle";
 
 interface SandboxTarget {
@@ -214,7 +216,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       treeDataProvider: portsProvider,
     },
   );
-  outputChannel.appendLine("View registered: remote-tensorlake-sandboxes-sidebar");
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -277,6 +278,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
         if (deleted) {
           sessionManager.remove(item.sandbox.sandbox_id);
+          await provider.clearRecentFolders(item.sandbox.sandbox_id);
           portsProvider.refresh();
         }
         provider.refresh();
@@ -321,6 +323,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await vscode.env.clipboard.writeText(item.url);
       },
     ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.removePort",
+      async (item: TensorlakePortItem | undefined) => {
+        if (!item) {
+          return;
+        }
+        const connected = connectionStore.resolveCurrent();
+        if (!connected) {
+          return;
+        }
+
+        try {
+          outputChannel.info(
+            `Remove port requested: sandbox=${connected.sandboxId} port=${item.port}`,
+          );
+          await removeTensorlakePort(connected.sandboxId, item.port);
+          sessionManager.invalidate(connected.sandboxId);
+          outputChannel.info(
+            `Port removed: sandbox=${connected.sandboxId} port=${item.port}`,
+          );
+          portsProvider.refresh();
+        } catch (error) {
+          showConnectionError(error, outputChannel);
+        }
+      },
+    ),
   );
 
   context.subscriptions.push(
@@ -331,6 +359,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       "remote-tensorlake.connectInNewWindow",
       (item: SandboxTreeItem | undefined) => connectTreeItem(item, true),
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.connectRecentFolderInCurrentWindow",
+      (item: TensorlakeRecentFolderItem | undefined) =>
+        connectRecentFolder(item, false),
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.connectRecentFolderInNewWindow",
+      (item: TensorlakeRecentFolderItem | undefined) =>
+        connectRecentFolder(item, true),
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.removeRecentFolder",
+      async (item: TensorlakeRecentFolderItem | undefined) => {
+        if (!(item instanceof TensorlakeRecentFolderItem)) {
+          return;
+        }
+        await provider.removeRecentFolder(item);
+      },
     ),
     vscode.commands.registerCommand(
       "remote-tensorlake.openConnectedFolder",
@@ -349,6 +396,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           if (!remotePath) {
             return;
           }
+          await provider.rememberRecentFolder(
+            connected.sandboxId,
+            connected.name,
+            remotePath,
+          );
           await openTensorlakeWorkspace(
             connected.sandboxId,
             false,
@@ -429,6 +481,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               ),
           );
 
+          await provider.rememberRecentFolder(
+            connected.sandboxId,
+            connected.name,
+            clonedPath,
+          );
           await openTensorlakeWorkspace(
             connected.sandboxId,
             false,
@@ -576,6 +633,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
   );
 
+  async function connectRecentFolder(
+    item: TensorlakeRecentFolderItem | undefined,
+    newWindow: boolean,
+  ): Promise<void> {
+    if (!(item instanceof TensorlakeRecentFolderItem)) {
+      return;
+    }
+    const recent = item.recent;
+    try {
+      outputChannel.info(
+        "Recent folder connect requested: sandbox=" + recent.sandboxId +
+          " path=" + recent.remotePath + " newWindow=" + newWindow,
+      );
+      await sessionManager.ensureRunning(recent.sandboxId, true);
+      await provider.rememberRecentFolder(
+        recent.sandboxId,
+        recent.sandboxName,
+        recent.remotePath,
+      );
+      await openTensorlakeWorkspace(
+        recent.sandboxId,
+        newWindow,
+        recent.remotePath,
+        recent.sandboxName,
+      );
+    } catch (error) {
+      showConnectionError(error, outputChannel);
+    }
+  }
+
   async function connectTreeItem(
     item: SandboxTreeItem | undefined,
     newWindow: boolean,
@@ -609,6 +696,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           outputChannel.info(
             `Opening Tensorlake virtual workspace: sandbox=${sandbox.sandbox_id} name=${sandbox.name ?? ""} path=${TENSORLAKE_HOME}`,
           );
+          await provider.rememberRecentFolder(
+            sandbox.sandbox_id,
+            sandbox.name,
+            TENSORLAKE_HOME,
+          );
           await openTensorlakeWorkspace(
             sandbox.sandbox_id,
             newWindow,
@@ -627,6 +719,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     terminalProfileRegistration,
     fileSystemProvider,
     sessionManager,
+    provider,
     portsProvider,
     portsView,
     outputChannel,

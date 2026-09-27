@@ -131,6 +131,41 @@ export async function exposeTensorlakePort(
   return updated;
 }
 
+export async function removeTensorlakePort(
+  sandboxId: string,
+  port: number,
+): Promise<TensorlakeSandboxInfo> {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new TensorlakeError(
+      "Port must be an integer between 1 and 65535.",
+      TensorlakeErrorKind.InvalidArgument,
+    );
+  }
+
+  const current = await getTensorlakeSandboxInfo(sandboxId);
+  const exposedPorts = (current.exposed_ports ?? []).filter(
+    (exposedPort) => exposedPort !== port,
+  );
+
+  const response = await managementRequest(
+    `/sandboxes/${encodeURIComponent(current.id)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        exposed_ports: exposedPorts,
+      }),
+    },
+  );
+
+  const updated = (await response.json()) as TensorlakeSandboxInfo;
+  setTensorlakeProxyBase(updated.id, updated.sandbox_url);
+  if (sandboxId !== updated.id) {
+    setTensorlakeProxyBase(sandboxId, updated.sandbox_url);
+  }
+  return updated;
+}
+
 export function publicTensorlakePortUrl(
   sandbox: TensorlakeSandboxInfo,
   port: number,

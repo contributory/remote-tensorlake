@@ -40,11 +40,17 @@ export class TensorlakeSessionManager implements vscode.Disposable {
 
     const cached = this.cache.get(sandboxId);
     if (cached && cached.expiresAt > Date.now()) {
+      this.output.appendLine(
+        `[Tensorlake] Session cache hit: sandbox=${sandboxId} status=${cached.sandbox.status}`,
+      );
       return Promise.resolve(cached.sandbox);
     }
 
     const existing = this.connecting.get(sandboxId);
     if (existing) {
+      this.output.appendLine(
+        `[Tensorlake] Reusing in-flight connection: sandbox=${sandboxId}`,
+      );
       return existing;
     }
 
@@ -95,10 +101,19 @@ export class TensorlakeSessionManager implements vscode.Disposable {
   private async ensureRunningInternal(
     sandboxId: string,
   ): Promise<TensorlakeSandboxInfo> {
+    this.output.appendLine(
+      `[Tensorlake] Checking sandbox state: sandbox=${sandboxId}`,
+    );
     let sandbox = await getTensorlakeSandboxInfo(sandboxId);
     let status = sandbox.status.toLowerCase();
+    this.output.appendLine(
+      `[Tensorlake] Sandbox state: sandbox=${sandboxId} status=${sandbox.status}`,
+    );
 
     if (status === "running") {
+      this.output.appendLine(
+        `[Tensorlake] Sandbox ready: sandbox=${sandboxId}`,
+      );
       return sandbox;
     }
 
@@ -123,6 +138,9 @@ export class TensorlakeSessionManager implements vscode.Disposable {
       status = sandbox.status.toLowerCase();
 
       if (status === "running") {
+        this.output.appendLine(
+          `[Tensorlake] Sandbox resumed and ready: sandbox=${sandboxId}`,
+        );
         return sandbox;
       }
       if (status === "terminated" || status === "failed") {

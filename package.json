@@ -2,7 +2,7 @@
   "name": "vscode-remote-tensorlake",
   "displayName": "Remote Tensorlake",
   "description": "Manage Tensorlake sandboxes and open lightweight remote workspaces without VS Code Server.",
-  "version": "0.0.9",
+  "version": "0.0.12",
   "repository": {
     "type": "git",
     "url": "https://github.com/starfall-org/remote-sandbox-vscode.git"
@@ -32,6 +32,13 @@
           "title": "Remote Tensorlake",
           "icon": "$(cloud)"
         }
+      ],
+      "panel": [
+        {
+          "id": "remote-tensorlake-ports-panel",
+          "title": "Ports",
+          "icon": "media/ports.svg"
+        }
       ]
     },
     "views": {
@@ -42,6 +49,14 @@
           "type": "tree",
           "when": "true",
           "icon": "$(server)"
+        }
+      ],
+      "remote-tensorlake-ports-panel": [
+        {
+          "id": "remote-tensorlake-ports",
+          "name": "Ports",
+          "type": "tree",
+          "when": "remoteTensorlake.connected"
         }
       ]
     },
@@ -113,6 +128,26 @@
         "command": "remote-tensorlake.cloneGitRepository",
         "title": "Tensorlake: Clone Git Repository...",
         "icon": "$(repo-clone)"
+      },
+      {
+        "command": "remote-tensorlake.refreshPorts",
+        "title": "Refresh Ports",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "remote-tensorlake.openPort",
+        "title": "Open in Browser",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "remote-tensorlake.copyPortUrl",
+        "title": "Copy Port URL",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "remote-tensorlake.showLogs",
+        "title": "Tensorlake: Show Logs",
+        "icon": "$(output)"
       }
     ],
     "menus": {
@@ -121,6 +156,16 @@
           "command": "remote-tensorlake.refreshSandboxes",
           "when": "view == remote-tensorlake-sandboxes-sidebar",
           "group": "navigation@1"
+        },
+        {
+          "command": "remote-tensorlake.exposePublicPort",
+          "when": "view == remote-tensorlake-ports",
+          "group": "navigation@1"
+        },
+        {
+          "command": "remote-tensorlake.refreshPorts",
+          "when": "view == remote-tensorlake-ports",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -163,6 +208,16 @@
           "command": "remote-tensorlake.exposePublicPort",
           "when": "viewItem =~ /tensorlakeSandbox(Running.*|Suspended)/ && view == remote-tensorlake-sandboxes-sidebar",
           "group": "2_network@1"
+        },
+        {
+          "command": "remote-tensorlake.openPort",
+          "when": "view == remote-tensorlake-ports && viewItem == tensorlakePort",
+          "group": "inline@1"
+        },
+        {
+          "command": "remote-tensorlake.copyPortUrl",
+          "when": "view == remote-tensorlake-ports && viewItem == tensorlakePort",
+          "group": "inline@2"
         }
       ],
       "explorer/context": [
@@ -193,7 +248,14 @@
           "icon": "cloud"
         }
       ]
-    }
+    },
+    "viewsWelcome": [
+      {
+        "view": "remote-tensorlake-ports",
+        "contents": "No exposed Tensorlake ports.\n\n[Forward a Port](command:remote-tensorlake.exposePublicPort)",
+        "when": "remoteTensorlake.connected"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

@@ -32,6 +32,7 @@ export class TensorlakeFileSystemProvider
 
   constructor(
     private readonly ensureSandbox: (sandboxId: string) => Promise<unknown>,
+    private readonly output?: vscode.LogOutputChannel,
   ) {}
 
   watch(
@@ -60,6 +61,7 @@ export class TensorlakeFileSystemProvider
         size: stat.size,
       };
     } catch (error) {
+      this.logFailure("filesystem operation", uri, error);
       throw toFileSystemError(error);
     }
   }
@@ -73,6 +75,7 @@ export class TensorlakeFileSystemProvider
         entry.isDirectory ? vscode.FileType.Directory : vscode.FileType.File,
       ]);
     } catch (error) {
+      this.logFailure("filesystem operation", uri, error);
       throw toFileSystemError(error);
     }
   }
@@ -82,6 +85,7 @@ export class TensorlakeFileSystemProvider
       const { sandboxId, remotePath } = await this.resolve(uri);
       return await readTensorlakeFile(sandboxId, remotePath);
     } catch (error) {
+      this.logFailure("filesystem operation", uri, error);
       throw toFileSystemError(error);
     }
   }
@@ -101,6 +105,9 @@ export class TensorlakeFileSystemProvider
         throw vscode.FileSystemError.FileNotFound(uri);
       }
 
+      this.output?.debug(
+        `FS write: sandbox=${target.sandboxId} path=${target.remotePath} bytes=${content.byteLength}`,
+      );
       await writeTensorlakeFile(
         target.sandboxId,
         target.remotePath,
@@ -111,6 +118,7 @@ export class TensorlakeFileSystemProvider
         uri,
       );
     } catch (error) {
+      this.logFailure("filesystem operation", uri, error);
       throw toFileSystemError(error);
     }
   }
@@ -118,9 +126,11 @@ export class TensorlakeFileSystemProvider
   async createDirectory(uri: vscode.Uri): Promise<void> {
     try {
       const { sandboxId, remotePath } = await this.resolve(uri);
+      this.output?.debug(`FS mkdir: sandbox=${sandboxId} path=${remotePath}`);
       await createTensorlakeDirectory(sandboxId, remotePath);
       this.fire(vscode.FileChangeType.Created, uri);
     } catch (error) {
+      this.logFailure("filesystem operation", uri, error);
       throw toFileSystemError(error);
     }
   }
@@ -131,6 +141,9 @@ export class TensorlakeFileSystemProvider
   ): Promise<void> {
     try {
       const { sandboxId, remotePath } = await this.resolve(uri);
+      this.output?.debug(
+        `FS delete: sandbox=${sandboxId} path=${remotePath} recursive=${options.recursive}`,
+      );
       const stat = await statTensorlakePath(sandboxId, remotePath);
       if (stat.type === "directory") {
         await deleteTensorlakeDirectory(
@@ -143,6 +156,7 @@ export class TensorlakeFileSystemProvider
       }
       this.fire(vscode.FileChangeType.Deleted, uri);
     } catch (error) {
+      this.logFailure("filesystem operation", uri, error);
       throw toFileSystemError(error);
     }
   }
@@ -171,6 +185,9 @@ export class TensorlakeFileSystemProvider
         throw vscode.FileSystemError.FileExists(newUri);
       }
 
+      this.output?.debug(
+        `FS rename: sandbox=${oldParsed.sandboxId} from=${oldParsed.remotePath} to=${newParsed.remotePath} overwrite=${options.overwrite}`,
+      );
       await renameTensorlakePath(
         oldParsed.sandboxId,
         oldParsed.remotePath,
@@ -184,6 +201,7 @@ export class TensorlakeFileSystemProvider
       this.fireParentChanged(oldUri);
       this.fireParentChanged(newUri);
     } catch (error) {
+      this.logFailure("rename", oldUri, error);
       throw toFileSystemError(error);
     }
   }
@@ -231,6 +249,14 @@ export class TensorlakeFileSystemProvider
     return uri.with({
       path: uri.path.replace(/\/[^/]+\/?$/, "") || "/",
     });
+  }
+
+
+  private logFailure(operation: string, uri: vscode.Uri, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.output?.error(
+      `FS ${operation} failed: uri=${uri.toString()} error=${message}`,
+    );
   }
 
   dispose(): void {

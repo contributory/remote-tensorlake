@@ -22,6 +22,7 @@ import {
 } from "./remote/TensorlakePseudoterminal";
 import { DEFAULT_TENSORLAKE_WORKSPACE, TENSORLAKE_HOME, parseTensorlakeUri } from "./remote/uri";
 import { TensorlakeConnectionStore } from "./remote/connection";
+import { TensorlakePortsProvider, type TensorlakePortItem } from "./remote/TensorlakePortsProvider";
 import { pickTensorlakeFolder } from "./remote/folderPicker";
 import {
   cloneTensorlakeGitRepository,
@@ -39,14 +40,17 @@ interface SandboxTarget {
   workingDir: string;
 }
 
-export function activate(context: vscode.ExtensionContext): void {
-  const outputChannel = vscode.window.createOutputChannel("Remote Tensorlake");
-  outputChannel.appendLine("Remote Tensorlake is now active!");
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const outputChannel = vscode.window.createOutputChannel("Remote Tensorlake", { log: true });
+  outputChannel.info("Extension activated");
+  outputChannel.info(`Workspace folders: ${(vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.toString()).join(", ") || "none"}`);
 
   const sessionManager = new TensorlakeSessionManager(outputChannel);
   const connectionStore = new TensorlakeConnectionStore();
+  const portsProvider = new TensorlakePortsProvider(connectionStore, outputChannel);
   const fileSystemProvider = new TensorlakeFileSystemProvider(
     (sandboxId) => sessionManager.ensureRunning(sandboxId),
+    outputChannel,
   );
   const fileSystemRegistration = vscode.workspace.registerFileSystemProvider(
     "tensorlake",
@@ -57,12 +61,6 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
 
-  const connectedStatus = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    100,
-  );
-  connectedStatus.command = "remote-tensorlake.openTerminal";
-
   const refreshConnectionContext = async (): Promise<void> => {
     const connected = connectionStore.resolveCurrent();
     await vscode.commands.executeCommand(
@@ -72,13 +70,12 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     if (connected) {
-      connectedStatus.text = `$(remote) Tensorlake: ${connected.name}`;
-      connectedStatus.tooltip =
-        "Connected to Tensorlake. Click to open a remote terminal.";
-      connectedStatus.show();
+      outputChannel.info(
+        `Connected workspace detected: name=${connected.name} sandbox=${connected.sandboxId} path=${connected.remotePath}`,
+      );
       await ensureTensorlakeTerminalDefault();
     } else {
-      connectedStatus.hide();
+      outputChannel.info("No Tensorlake workspace detected");
     }
   };
 
@@ -90,10 +87,10 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    const config = vscode.workspace.getConfiguration(
-      "terminal.integrated",
-      folder.uri,
-    );
+    // VS Code resolves the default terminal profile at workspace scope when
+    // the New Terminal command / + button is used. A WorkspaceFolder-scoped
+    // value on a virtual filesystem is not consulted by that resolver.
+    const config = vscode.workspace.getConfiguration("terminal.integrated");
     const platform =
       process.platform === "win32"
         ? "windows"
@@ -101,24 +98,38 @@ export function activate(context: vscode.ExtensionContext): void {
           ? "osx"
           : "linux";
     const key = `defaultProfile.${platform}`;
-    if (config.get<string>(key) !== "Tensorlake") {
+    const inspected = config.inspect<string>(key);
+    outputChannel.info(
+      `Terminal default check: key=${key} workspaceValue=${String(inspected?.workspaceValue)} resolved=${String(config.get<string>(key))}`,
+    );
+    if (inspected?.workspaceValue !== "Tensorlake") {
+      outputChannel.info(`Setting ${key}=Tensorlake at workspace scope`);
       await config.update(
         key,
         "Tensorlake",
-        vscode.ConfigurationTarget.WorkspaceFolder,
+        vscode.ConfigurationTarget.Workspace,
+      );
+    }
+
+    const resolved = vscode.workspace
+      .getConfiguration("terminal.integrated")
+      .get<string>(key);
+    outputChannel.info(`Terminal default resolved to ${String(resolved)}`);
+    if (resolved !== "Tensorlake") {
+      throw new Error(
+        `VS Code did not accept Tensorlake as the workspace default terminal profile (${key}).`,
       );
     }
   };
 
-  void refreshConnectionContext().catch((error) =>
-    showConnectionError(error, outputChannel),
-  );
+  await refreshConnectionContext();
 
   const terminalProfileRegistration =
     vscode.window.registerTerminalProfileProvider(
       "remote-tensorlake.terminal",
       {
         provideTerminalProfile: async () => {
+          outputChannel.info("Terminal profile requested by VS Code");
           try {
             const remoteFolders = (vscode.workspace.workspaceFolders ?? []).filter(
               (folder) => folder.uri.scheme === "tensorlake",
@@ -167,10 +178,18 @@ export function activate(context: vscode.ExtensionContext): void {
               }
             }
 
+            outputChannel.info(
+              `Resolving Tensorlake terminal: sandbox=${sandboxId} label=${label} cwd=${workingDir}`,
+            );
             await sessionManager.ensureRunning(sandboxId, true);
+            outputChannel.info(`Tensorlake terminal profile ready: sandbox=${sandboxId} cwd=${workingDir}`);
             return new vscode.TerminalProfile({
               name: `Tensorlake: ${label}`,
-              pty: new TensorlakePseudoterminal(sandboxId, workingDir),
+              pty: new TensorlakePseudoterminal(
+                sandboxId,
+                workingDir,
+                outputChannel,
+              ),
               iconPath: new vscode.ThemeIcon("cloud"),
               isTransient: true,
             });
@@ -187,6 +206,12 @@ export function activate(context: vscode.ExtensionContext): void {
     "remote-tensorlake-sandboxes-sidebar",
     {
       treeDataProvider: provider,
+    },
+  );
+  const portsView = vscode.window.createTreeView(
+    "remote-tensorlake-ports",
+    {
+      treeDataProvider: portsProvider,
     },
   );
   outputChannel.appendLine("View registered: remote-tensorlake-sandboxes-sidebar");
@@ -218,6 +243,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (suspended) {
           sessionManager.markSuspended(item.sandbox.sandbox_id);
+          portsProvider.refresh();
         }
         provider.refresh();
       },
@@ -234,6 +260,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (resumed) {
           sessionManager.markAvailable(item.sandbox.sandbox_id);
+          portsProvider.refresh();
         }
         provider.refresh();
       },
@@ -250,6 +277,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (deleted) {
           sessionManager.remove(item.sandbox.sandbox_id);
+          portsProvider.refresh();
         }
         provider.refresh();
       },
@@ -266,6 +294,32 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "remote-tensorlake.refreshSandboxes",
       () => provider.refresh(),
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.showLogs",
+      () => outputChannel.show(false),
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.refreshPorts",
+      () => portsProvider.refresh(),
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.openPort",
+      async (item: TensorlakePortItem | undefined) => {
+        if (!item?.url) {
+          return;
+        }
+        await vscode.env.openExternal(vscode.Uri.parse(item.url));
+      },
+    ),
+    vscode.commands.registerCommand(
+      "remote-tensorlake.copyPortUrl",
+      async (item: TensorlakePortItem | undefined) => {
+        if (!item?.url) {
+          return;
+        }
+        await vscode.env.clipboard.writeText(item.url);
+      },
     ),
   );
 
@@ -396,9 +450,13 @@ export function activate(context: vscode.ExtensionContext): void {
         try {
           const parsed = parseTensorlakeUri(resource);
           await sessionManager.ensureRunning(parsed.sandboxId, true);
+          outputChannel.info(
+            `Opening Tensorlake terminal from Explorer: sandbox=${parsed.sandboxId} cwd=${parsed.remotePath}`,
+          );
           openTensorlakeTerminal(
             parsed.sandboxId,
             parsed.remotePath,
+            outputChannel,
           );
         } catch (error) {
           showConnectionError(error, outputChannel);
@@ -426,7 +484,14 @@ export function activate(context: vscode.ExtensionContext): void {
             },
             () => sessionManager.ensureRunning(target.sandboxId, true),
           );
-          openTensorlakeTerminal(target.sandboxId, target.workingDir);
+          outputChannel.info(
+            `Opening Tensorlake terminal: sandbox=${target.sandboxId} cwd=${target.workingDir}`,
+          );
+          openTensorlakeTerminal(
+            target.sandboxId,
+            target.workingDir,
+            outputChannel,
+          );
         } catch (error) {
           showConnectionError(error, outputChannel);
         }
@@ -459,6 +524,9 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         const port = Number(portInput);
+        outputChannel.info(
+          `Expose port requested: sandbox=${target.sandboxId} port=${port}`,
+        );
 
         try {
           const current = await sessionManager.ensureRunning(
@@ -486,6 +554,9 @@ export function activate(context: vscode.ExtensionContext): void {
           );
           sessionManager.invalidate(target.sandboxId);
           const publicUrl = publicTensorlakePortUrl(updated, port);
+          outputChannel.info(
+            `Port exposed: sandbox=${target.sandboxId} port=${port} url=${publicUrl}`,
+          );
           const action = await vscode.window.showInformationMessage(
             `Tensorlake port ${port} is public at ${publicUrl}`,
             "Open in Browser",
@@ -497,6 +568,7 @@ export function activate(context: vscode.ExtensionContext): void {
             await vscode.env.clipboard.writeText(publicUrl);
           }
           provider.refresh();
+          portsProvider.refresh();
         } catch (error) {
           showConnectionError(error, outputChannel);
         }
@@ -523,6 +595,9 @@ export function activate(context: vscode.ExtensionContext): void {
     newWindow: boolean,
   ): Promise<void> {
     try {
+      outputChannel.info(
+        `Connect requested: sandbox=${sandbox.sandbox_id} name=${sandbox.name ?? ""} newWindow=${newWindow}`,
+      );
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -531,6 +606,9 @@ export function activate(context: vscode.ExtensionContext): void {
         },
         async () => {
           await sessionManager.ensureRunning(sandbox.sandbox_id, true);
+          outputChannel.info(
+            `Opening Tensorlake virtual workspace: sandbox=${sandbox.sandbox_id} name=${sandbox.name ?? ""} path=${TENSORLAKE_HOME}`,
+          );
           await openTensorlakeWorkspace(
             sandbox.sandbox_id,
             newWindow,
@@ -549,7 +627,8 @@ export function activate(context: vscode.ExtensionContext): void {
     terminalProfileRegistration,
     fileSystemProvider,
     sessionManager,
-    connectedStatus,
+    portsProvider,
+    portsView,
     outputChannel,
     treeView,
   );
@@ -617,7 +696,11 @@ function showConnectionError(
   outputChannel: vscode.OutputChannel,
 ): void {
   const message = error instanceof Error ? error.message : String(error);
-  outputChannel.appendLine(`[Tensorlake] Remote connection error: ${message}`);
+  if ("error" in outputChannel && typeof outputChannel.error === "function") {
+    (outputChannel as vscode.LogOutputChannel).error(message);
+  } else {
+    outputChannel.appendLine(`[Tensorlake] ${message}`);
+  }
   vscode.window.showErrorMessage(`Tensorlake connection error: ${message}`);
 }
 

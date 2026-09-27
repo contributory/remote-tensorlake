@@ -22,14 +22,19 @@ export class TensorlakePseudoterminal implements vscode.Pseudoterminal {
   constructor(
     private readonly sandboxId: string,
     private readonly workingDir = DEFAULT_TENSORLAKE_WORKSPACE,
+    private readonly output?: vscode.LogOutputChannel,
   ) {}
 
   open(initialDimensions: vscode.TerminalDimensions | undefined): void {
+    this.output?.info(
+      `PTY open: sandbox=${this.sandboxId} cwd=${this.workingDir} size=${initialDimensions?.columns ?? "?"}x${initialDimensions?.rows ?? "?"}`,
+    );
     this.dimensions = initialDimensions;
     void this.connect();
   }
 
   close(): void {
+    this.output?.info(`PTY close requested: sandbox=${this.sandboxId}`);
     this.disposed = true;
     const session = this.session;
     this.session = undefined;
@@ -67,6 +72,7 @@ export class TensorlakePseudoterminal implements vscode.Pseudoterminal {
       }
 
       this.session = session;
+      this.output?.info(`PTY connected: sandbox=${this.sandboxId} cwd=${this.workingDir}`);
       session.onData((data) => {
         const text = this.decoder.write(Buffer.from(data));
         if (text) {
@@ -74,6 +80,7 @@ export class TensorlakePseudoterminal implements vscode.Pseudoterminal {
         }
       });
       session.onExit((exitCode) => {
+        this.output?.info(`PTY exited: sandbox=${this.sandboxId} code=${exitCode}`);
         this.session = undefined;
         this.finish(exitCode);
       });
@@ -84,6 +91,9 @@ export class TensorlakePseudoterminal implements vscode.Pseudoterminal {
       this.pendingInput = [];
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      this.output?.error(
+        `PTY connection failed: sandbox=${this.sandboxId} cwd=${this.workingDir}: ${message}`,
+      );
       this.writeEmitter.fire(
         `\r\n[Tensorlake terminal error] ${message}\r\n`,
       );
@@ -107,10 +117,11 @@ export class TensorlakePseudoterminal implements vscode.Pseudoterminal {
 export function openTensorlakeTerminal(
   sandboxId: string,
   workingDir = DEFAULT_TENSORLAKE_WORKSPACE,
+  output?: vscode.LogOutputChannel,
 ): vscode.Terminal {
   const terminal = vscode.window.createTerminal({
     name: `Tensorlake: ${sandboxId}`,
-    pty: new TensorlakePseudoterminal(sandboxId, workingDir),
+    pty: new TensorlakePseudoterminal(sandboxId, workingDir, output),
   });
   terminal.show();
   return terminal;
